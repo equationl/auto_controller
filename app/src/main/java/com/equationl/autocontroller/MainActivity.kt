@@ -15,7 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.equationl.autocontroller.ui.theme.AutoControllerTheme
+import com.equationl.autocontroller.view.HomeView
+import com.equationl.autocontroller.viewModel.HomeViewModel
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -25,6 +28,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             AutoControllerTheme {
                 // A surface container using the 'background' color from the theme
@@ -32,70 +36,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Greeting("Android")
+                    val viewModel: HomeViewModel = viewModel()
+                    HomeView(viewModel = viewModel)
                 }
             }
         }
-
-
-        val adapter = getBtAdapter()
-        if (adapter?.isEnabled == false) {
-            checkBtEnable(adapter)
-        }
-        else {
-            queryPairDevices(adapter)
-        }
-
     }
 
-    private fun getBtAdapter(): BluetoothAdapter? {
-        val bluetoothManager: BluetoothManager = getSystemService(BluetoothManager::class.java)
-        val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
-        if (bluetoothAdapter == null) {
-            // Device doesn't support Bluetooth
-            Log.i(TAG, "getBtAdapter: device not support bt")
-        }
-
-        return bluetoothAdapter
-    }
-
-    private fun checkBtEnable(bluetoothAdapter: BluetoothAdapter?) {
-        // FIXME 需要运行时权限
-        if (bluetoothAdapter?.isEnabled == false) {
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivityForResult(enableBtIntent, 1)
-        }
-    }
-
-    private fun queryPairDevices(bluetoothAdapter: BluetoothAdapter?) {
-        val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter?.bondedDevices
-        pairedDevices?.forEach { device ->
-            val deviceName = device.name
-            val deviceHardwareAddress = device.address // MAC address
-
-            Log.i(TAG, "queryPairDevices: deveice name=$deviceName, mac=$deviceHardwareAddress")
-        }
-    }
-
-    private fun connectDevice() {
-        // TODO
-
-
-    }
-
-}
-
-
-
-@Composable
-fun Greeting(name: String) {
-    Text(text = "Hello $name!")
-}
-
-@Preview(showBackground = true)
-@Composable
-fun DefaultPreview() {
-    AutoControllerTheme {
-        Greeting("Android")
-    }
 }
