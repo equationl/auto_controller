@@ -1,13 +1,19 @@
 package com.equationl.autocontroller.utils
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -15,7 +21,7 @@ import java.util.*
 
 class BtHelper {
     private var bluetoothAdapter: BluetoothAdapter? = null
-
+    private var keepReceive: Boolean = true
 
     companion object {
         private const val TAG = "BtHelper"
@@ -43,18 +49,12 @@ class BtHelper {
         }
     }
 
-    fun connectDevice(bluetoothDevice: BluetoothDevice) {
-        ConnectThread(bluetoothDevice).run()
+    fun checkBluetooth(context: Context): Boolean {
+        return ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                && bluetoothAdapter?.isEnabled == true
     }
 
-    /*private fun checkBtEnable(bluetoothAdapter: BluetoothAdapter?) {
-        // FIXME 需要运行时权限
-        if (bluetoothAdapter?.isEnabled == false) {
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivityForResult(enableBtIntent, 1)
-        }
-    }*/
-
+    @SuppressLint("MissingPermission")
     fun queryPairDevices(): Set<BluetoothDevice>? {
         if (bluetoothAdapter == null) {
             Log.e(TAG, "queryPairDevices: bluetoothAdapter is null!")
@@ -73,44 +73,89 @@ class BtHelper {
         return pairedDevices
     }
 
-
-    private inner class ConnectThread(device: BluetoothDevice) : Thread() {
-
-        private val mmSocket: BluetoothSocket? by lazy(LazyThreadSafetyMode.NONE) {
+    @SuppressLint("MissingPermission")
+    suspend fun connectDevice(device: BluetoothDevice, onConnected : (socket: Result<BluetoothSocket>) -> Unit) {
+        val mmSocket: BluetoothSocket? by lazy(LazyThreadSafetyMode.NONE) {
             device.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805f9b34fb"))
         }
 
-        public override fun run() {
-            // Cancel discovery because it otherwise slows down the connection.
-            bluetoothAdapter?.cancelDiscovery()
+        withContext(Dispatchers.IO) {
 
-            mmSocket?.let { socket ->
-                // Connect to the remote device through the socket. This call blocks
-                // until it succeeds or throws an exception.
-                socket.connect()
+            kotlin.runCatching {
+                // 开始连接前应该关闭扫描，否则会减慢连接速度
+                bluetoothAdapter?.cancelDiscovery()
 
-                // The connection attempt succeeded. Perform work associated with
-                // the connection in a separate thread.
-                //manageMyConnectedSocket(socket)
-            }
+                mmSocket?.connect()
+            }.fold({
+                withContext(Dispatchers.Main) {
+                    onConnected(Result.success(mmSocket!!))
+                }
+            }, {
+                withContext(Dispatchers.Main) {
+                    onConnected(Result.failure(it))
+                }
+                Log.e(TAG, "connectDevice: connect fail!", it)
+            })
         }
+    }
 
-        // Closes the client socket and causes the thread to finish.
-        fun cancel() {
-            try {
-                mmSocket?.close()
-            } catch (e: IOException) {
-                Log.e(TAG, "Could not close the client socket", e)
+    fun cancelConnect(mmSocket: BluetoothSocket?) {
+        try {
+            mmSocket?.close()
+        } catch (e: IOException) {
+            Log.e(TAG, "Could not close the client socket", e)
+        }
+    }
+
+    suspend fun startBtReceiveServer(mmSocket: BluetoothSocket, onReceive: (byte: Int, byteBufferArray: ByteArray) -> Unit) {
+        keepReceive = true
+        val mmInStream: InputStream = mmSocket.inputStream
+        val mmBuffer = ByteArray(1024) // mmBuffer store for the stream
+
+        withContext(Dispatchers.IO) {
+            var numBytes: Int = 0 // bytes returned from read()
+            while (true) {
+
+                kotlin.runCatching {
+                    mmInStream.read(mmBuffer)
+                }.fold(
+                    {
+                        numBytes = it
+                    },
+                    {
+                        Log.e(TAG, "Input stream was disconnected", it)
+                        return@withContext
+                    }
+                )
+
+                withContext(Dispatchers.Main) {
+                    onReceive(numBytes, mmBuffer)
+                }
             }
         }
     }
 
-    private const val TAG = "MY_APP_DEBUG_TAG"
+    fun stopBtReceiveServer() {
+        keepReceive = false
+    }
 
-    // Defines several constants used when transmitting messages between the
-// service and the UI.
+    suspend fun sendByteToDevice(mmSocket: BluetoothSocket, bytes: ByteArray, onSend: (result: Result<ByteArray>) -> Unit) {
+        val mmOutStream: OutputStream = mmSocket.outputStream
 
-// ... (Add other message types here as needed.)
+        withContext(Dispatchers.IO) {
+            val result = kotlin.runCatching {
+                mmOutStream.write(bytes)
+            }
+
+            if (result.isFailure) {
+                Log.e(TAG, "Error occurred when sending data", result.exceptionOrNull())
+                onSend(Result.failure(result.exceptionOrNull() ?: Exception("not found exception")))
+            }
+            else {
+                onSend(Result.success(bytes))
+            }
+        }
+    }
 
     class MyBluetoothService(
         // handler that gets info from Bluetooth service
