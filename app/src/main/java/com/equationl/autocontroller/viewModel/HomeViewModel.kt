@@ -30,32 +30,55 @@ class HomeViewModel: ViewModel() {
             is HomeAction.InitBt -> initBt(action.context)
             is HomeAction.ConnectDevice -> connectDevice(action.device)
             is HomeAction.OnClickButton -> onClickButton(action.index, action.action)
+            is HomeAction.ClickPowerOn -> changePowerState(true)
+            is HomeAction.ClickPowerOff -> changePowerState(false)
+        }
+    }
+
+    private fun changePowerState(isOn: Boolean) {
+        viewModelScope.launch {
+            val value: Byte = if (isOn) 1 else 2
+            BtHelper.instance.sendByteToDevice(socket!!, byteArrayOf(value)) {
+                it.fold(
+                    {
+                        Log.i(TAG, "changePowerState: ${it.toHexStr()}")
+                    },
+                    {
+                        Log.e(TAG, "changePowerState: ", it)
+                    }
+                )
+            }
         }
     }
 
     private fun onClickButton(index: ButtonIndex, action: ButtonAction) {
-        // TODO
-
-        // fixme test
-        viewModelScope.launch {
-            if (action == ButtonAction.Down) {
-                Log.i(TAG, "onClickButton: button down")
-                BtHelper.instance.sendByteToDevice(socket!!, byteArrayOf(10)) {
-                    it.fold(
-                        {
-                            Log.i(TAG, "onClickButton: ${it.toHexStr()}")
-                        },
-                        {
-                            Log.e(TAG, "onClickButton: ", it)
-                        }
-                    )
-                }
+        val sendValue: Byte = when (index) {
+            ButtonIndex.Lock -> {
+                if (action == ButtonAction.Down) 101
+                else 102
             }
-            else {
-                Log.i(TAG, "onClickButton: button up")
+            ButtonIndex.Unlock -> {
+                if (action == ButtonAction.Down) 103
+                else 104
+            }
+            ButtonIndex.Loop -> {
+                if (action == ButtonAction.Down) 105
+                else 106
             }
         }
 
+        viewModelScope.launch {
+            BtHelper.instance.sendByteToDevice(socket!!, byteArrayOf(sendValue)) {
+                it.fold(
+                    {
+                        Log.i(TAG, "seed successful: byte= ${it.toHexStr()}")
+                    },
+                    {
+                        Log.e(TAG, "seed fail", it)
+                    }
+                )
+            }
+        }
     }
 
     private fun clickBack(activity: Activity?) {
@@ -151,6 +174,8 @@ data class HomeStates(
 )
 
 sealed class HomeAction {
+    object ClickPowerOn: HomeAction()
+    object ClickPowerOff: HomeAction()
     data class ClickBack(val activity: Activity?): HomeAction()
     data class InitBt(val context: Context): HomeAction()
     data class ConnectDevice(val device: BluetoothDevice) : HomeAction()

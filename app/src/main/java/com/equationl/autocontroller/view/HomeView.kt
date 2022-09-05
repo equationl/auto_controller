@@ -20,7 +20,6 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.equationl.autocontroller.utils.BtHelper
 import com.equationl.autocontroller.viewModel.*
 
 @Composable
@@ -64,19 +63,36 @@ fun HomeScreen(viewModel: HomeViewModel) {
             Button(
                 onClick = { },
                 modifier = Modifier.presBtn {
-                    // fixme test
                     viewModel.dispatch(HomeAction.OnClickButton(ButtonIndex.Lock, it))
                 }
             ) {
                 Text(text = "上锁")
             }
 
-            Button(onClick = {/*TODO*/ }) {
+            Button(onClick = { },
+                modifier = Modifier.presBtn {
+                    viewModel.dispatch(HomeAction.OnClickButton(ButtonIndex.Unlock, it))
+                }) {
                 Text(text = "解锁")
             }
 
-            Button(onClick = { /*TODO*/ }) {
-                Text(text = "多功能️")
+            Button(onClick = { },
+                modifier = Modifier.presBtn {
+                    viewModel.dispatch(HomeAction.OnClickButton(ButtonIndex.Loop, it))
+                }) {
+                Text(text = "多功能")
+            }
+
+            Button(onClick = {
+                viewModel.dispatch(HomeAction.ClickPowerOn)
+            }) {
+                Text(text = "上电")
+            }
+
+            Button(onClick = {
+                viewModel.dispatch(HomeAction.ClickPowerOff)
+            }) {
+                Text(text = "断电")
             }
 
             Button(onClick = { /*TODO*/ }) {
@@ -171,6 +187,7 @@ fun HomeInit(viewModel: HomeViewModel) {
     }
 }
 
+@SuppressLint("UnnecessaryComposedModifier")
 @OptIn(ExperimentalComposeUiApi::class)
 inline fun Modifier.presBtn(crossinline onPress: (btnAction: ButtonAction)->Unit): Modifier = composed {
 
