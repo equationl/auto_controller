@@ -32,6 +32,22 @@ class HomeViewModel: ViewModel() {
             is HomeAction.OnClickButton -> onClickButton(action.index, action.action)
             is HomeAction.ClickPowerOn -> changePowerState(true)
             is HomeAction.ClickPowerOff -> changePowerState(false)
+            is HomeAction.ClickReadState -> readState()
+        }
+    }
+
+    private fun readState() {
+        viewModelScope.launch {
+            BtHelper.instance.sendByteToDevice(socket!!, byteArrayOf(8)) {
+                it.fold(
+                    {
+                        Log.i(TAG, "changePowerState: ${it.toHexStr()}")
+                    },
+                    {
+                        Log.e(TAG, "changePowerState: ", it)
+                    }
+                )
+            }
         }
     }
 
@@ -117,9 +133,14 @@ class HomeViewModel: ViewModel() {
 
                         viewModelScope.launch {
                             if (socket != null) {
-                                BtHelper.instance.startBtReceiveServer(socket!!, onReceive = { byte, byteBufferArray ->
-                                    /* TODO */
-                                    Log.i(TAG, "connectDevice: rev：byte=$byte, \nbyteBuffer(hex)=${byteBufferArray.toHexStr()}, \nbyteBuffer(ascii)=${byteBufferArray.toText()}")
+                                BtHelper.instance.startBtReceiveServer(socket!!, onReceive = { numBytes, byteBufferArray ->
+                                    if (numBytes > 0) {
+                                        val contentArray = byteBufferArray.sliceArray(0..numBytes)
+
+                                        Log.i(TAG, "connectDevice: rev：numBytes=$numBytes, \nbyteBuffer(hex)=${contentArray.toHexStr()}, \nbyteBuffer(ascii)=${contentArray.toText()}")
+
+                                        viewStates = viewStates.copy(logText = "${viewStates.logText}\n${contentArray.toText()}")
+                                    }
                                 })
                             }
                         }
@@ -170,12 +191,14 @@ data class HomeStates(
     val connectState: ConnectState = ConnectState.NotConnect,
     val pairedDevices: Set<BluetoothDevice> = setOf(),
     val connectDevice: BluetoothDevice? = null,
-    val title: String = "Auto controller"
+    val title: String = "Auto controller",
+    val logText: String = ""
 )
 
 sealed class HomeAction {
     object ClickPowerOn: HomeAction()
     object ClickPowerOff: HomeAction()
+    object ClickReadState: HomeAction()
     data class ClickBack(val activity: Activity?): HomeAction()
     data class InitBt(val context: Context): HomeAction()
     data class ConnectDevice(val device: BluetoothDevice) : HomeAction()

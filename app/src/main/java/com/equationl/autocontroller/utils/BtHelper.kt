@@ -107,13 +107,13 @@ class BtHelper {
         }
     }
 
-    suspend fun startBtReceiveServer(mmSocket: BluetoothSocket, onReceive: (byte: Int, byteBufferArray: ByteArray) -> Unit) {
+    suspend fun startBtReceiveServer(mmSocket: BluetoothSocket, onReceive: (numBytes: Int, byteBufferArray: ByteArray) -> Unit) {
         keepReceive = true
         val mmInStream: InputStream = mmSocket.inputStream
         val mmBuffer = ByteArray(1024) // mmBuffer store for the stream
 
         withContext(Dispatchers.IO) {
-            var numBytes: Int = 0 // bytes returned from read()
+            var numBytes = 0 // bytes returned from read()
             while (true) {
 
                 kotlin.runCatching {

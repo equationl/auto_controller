@@ -1,21 +1,25 @@
 package com.equationl.autocontroller.view
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.view.MotionEvent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -29,6 +33,10 @@ fun HomeView(viewModel: HomeViewModel) {
         viewModel.dispatch(HomeAction.InitBt(context))
 
         onDispose {  }
+    }
+
+    BackHandler {
+        viewModel.dispatch(HomeAction.ClickBack(context as? Activity))
     }
 
     val viewStates = viewModel.viewStates
@@ -54,12 +62,55 @@ fun HomeView(viewModel: HomeViewModel) {
 
 @Composable
 fun HomeScreen(viewModel: HomeViewModel) {
+    val logScrollState = rememberScrollState()
+
     Column(
         Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceAround,
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Column {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.End
+        ) {
+            Button(
+                onClick = {
+                    viewModel.dispatch(HomeAction.ClickPowerOn)
+                },
+                modifier = Modifier.padding(end = 4.dp)
+            ) {
+                Text(text = "上电")
+            }
+
+            Button(
+                onClick = {
+                    viewModel.dispatch(HomeAction.ClickPowerOff)
+                },
+                modifier = Modifier.padding(end = 4.dp)
+            ) {
+                Text(text = "断电")
+            }
+
+            Button(
+                onClick = {
+                    viewModel.dispatch(HomeAction.ClickReadState
+                    )
+                },
+                modifier = Modifier.padding(end = 4.dp)
+            ) {
+                Text(text = "状态")
+            }
+
+            Button(onClick = { /*TODO*/ }) {
+                Text(text = "设置")
+            }
+        }
+
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.SpaceAround,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Button(
                 onClick = { },
                 modifier = Modifier.presBtn {
@@ -82,21 +133,32 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 }) {
                 Text(text = "多功能")
             }
+        }
 
-            Button(onClick = {
-                viewModel.dispatch(HomeAction.ClickPowerOn)
-            }) {
-                Text(text = "上电")
-            }
-
-            Button(onClick = {
-                viewModel.dispatch(HomeAction.ClickPowerOff)
-            }) {
-                Text(text = "断电")
-            }
-
-            Button(onClick = { /*TODO*/ }) {
-                Text(text = "设置")
+        Column(
+            Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.Bottom,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .background(Color.LightGray),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                LaunchedEffect(Unit) {
+                    logScrollState.animateScrollTo(0)
+                }
+                Text(text = "响应日志：", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = viewModel.viewStates.logText,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .verticalScroll(logScrollState, reverseScrolling = true)
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                )
             }
         }
     }
@@ -208,5 +270,6 @@ inline fun Modifier.presBtn(crossinline onPress: (btnAction: ButtonAction)->Unit
 @Preview(showSystemUi = true)
 @Composable
 fun PreviewHomeScreen() {
-    HomeView(viewModel = HomeViewModel())
+    //val viewModel: MockViewModel = viewModel()
+    //HomeScreen(viewModel)
 }
