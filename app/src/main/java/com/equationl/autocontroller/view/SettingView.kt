@@ -88,7 +88,6 @@ fun SettingCard(viewModel: HomeViewModel) {
                     onClick = {
                         viewModel.dispatch(HomeAction.ClickSaveSetting)
                     },
-                    enabled = viewState.availableInduction,
                     modifier = Modifier.padding(end = 4.dp)
                 ) {
                     Text(text = "保存")
