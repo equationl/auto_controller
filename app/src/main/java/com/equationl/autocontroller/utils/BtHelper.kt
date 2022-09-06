@@ -20,6 +20,8 @@ import java.io.OutputStream
 import java.util.*
 
 class BtHelper {
+    var socket: BluetoothSocket? = null
+
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var keepReceive: Boolean = true
 
@@ -88,6 +90,7 @@ class BtHelper {
                 mmSocket?.connect()
             }.fold({
                 withContext(Dispatchers.Main) {
+                    socket = mmSocket
                     onConnected(Result.success(mmSocket!!))
                 }
             }, {

@@ -9,9 +9,12 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.text.isDigitsOnly
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.equationl.autocontroller.utils.BtHelper
+import com.equationl.autocontroller.utils.FormatUtils.toBytes
+import com.equationl.autocontroller.utils.FormatUtils.toHex
 import com.equationl.autocontroller.utils.FormatUtils.toHexStr
 import com.equationl.autocontroller.utils.FormatUtils.toText
 import kotlinx.coroutines.launch
@@ -32,13 +35,79 @@ class HomeViewModel: ViewModel() {
             is HomeAction.OnClickButton -> onClickButton(action.index, action.action)
             is HomeAction.ClickPowerOn -> changePowerState(true)
             is HomeAction.ClickPowerOff -> changePowerState(false)
-            is HomeAction.ClickReadState -> readState()
+            is HomeAction.ClickReadState -> readState(action.readSettingOnly)
+            is HomeAction.ToggleSettingView -> toggleSettingView(action.isShow)
+            is HomeAction.OnAvailableInductionChange -> onAvailableInductionChange(action.value)
+            is HomeAction.OnRssiThresholdChange -> onRssiThresholdChange(action.value)
+            is HomeAction.OnScanningTimeChange -> onScanningTimeChange(action.value)
+            is HomeAction.OnShutdownThresholdChange -> onShutdownThresholdChange(action.value)
+            is HomeAction.OnTriggerUnlockChange -> onTriggerUnlockChange(action.value)
+            is HomeAction.ClickSaveSetting -> clickSaveSetting()
         }
     }
 
-    private fun readState() {
+
+    private fun clickSaveSetting() {
         viewModelScope.launch {
-            BtHelper.instance.sendByteToDevice(socket!!, byteArrayOf(8)) {
+            val cmdList = listOf(
+                "FF01${viewStates.scanningTime.toInt().toHex(2)}FF".toBytes(),
+                "FF02${viewStates.rssiThreshold.toInt().toHex(2)}FF".toBytes(),
+                "FF03${if (viewStates.triggerUnlock) "01" else "00"}FF".toBytes(),
+                "FF04${if (viewStates.availableInduction) "01" else "00"}FF".toBytes(),
+                "FF05${viewStates.shutdownThreshold.toInt().toHex(2)}FF".toBytes()
+            )
+
+            for (cmd in cmdList) {
+                BtHelper.instance.sendByteToDevice(socket!!, cmd) {
+                    it.fold(
+                        {
+                            Log.i(TAG, "clickSaveSetting: ${it.toHexStr()}")
+                        },
+                        {
+                            Log.e(TAG, "clickSaveSetting: ", it)
+                        }
+                    )
+                }
+            }
+        }
+
+    }
+
+    private fun onAvailableInductionChange(value: Boolean) {
+        viewStates = viewStates.copy(availableInduction = value)
+    }
+
+    private fun onRssiThresholdChange(value: String) {
+        if (value.isDigitsOnly()) {
+            viewStates = viewStates.copy(rssiThreshold = value)
+        }
+    }
+
+    private fun onScanningTimeChange(value: String) {
+        if (value.isDigitsOnly()) {
+            viewStates = viewStates.copy(scanningTime = value)
+        }
+    }
+
+    private fun onShutdownThresholdChange(value: String) {
+        if (value.isDigitsOnly()) {
+            viewStates = viewStates.copy(shutdownThreshold = value)
+        }
+    }
+
+    private fun onTriggerUnlockChange(value: Boolean) {
+        viewStates = viewStates.copy(triggerUnlock = value)
+    }
+
+    private fun toggleSettingView(isShow: Boolean) {
+        viewStates = viewStates.copy(isShowSettingView = isShow)
+        if (isShow) readState(true)
+    }
+
+    private fun readState(isOnlySetting: Boolean = false) {
+        if (isOnlySetting) viewStates = viewStates.copy(isReadSettingState = true)
+        viewModelScope.launch {
+            BtHelper.instance.sendByteToDevice(socket!!, byteArrayOf(if (isOnlySetting) 9 else 8)) {
                 it.fold(
                     {
                         Log.i(TAG, "changePowerState: ${it.toHexStr()}")
@@ -129,27 +198,7 @@ class HomeViewModel: ViewModel() {
             BtHelper.instance.connectDevice(device) {
                 it.fold(
                     {
-                        socket = it
-
-                        viewModelScope.launch {
-                            if (socket != null) {
-                                BtHelper.instance.startBtReceiveServer(socket!!, onReceive = { numBytes, byteBufferArray ->
-                                    if (numBytes > 0) {
-                                        val contentArray = byteBufferArray.sliceArray(0..numBytes)
-
-                                        Log.i(TAG, "connectDevice: rev：numBytes=$numBytes, \nbyteBuffer(hex)=${contentArray.toHexStr()}, \nbyteBuffer(ascii)=${contentArray.toText()}")
-
-                                        viewStates = viewStates.copy(logText = "${viewStates.logText}\n${contentArray.toText()}")
-                                    }
-                                })
-                            }
-                        }
-
-                        viewStates = viewStates.copy(
-                            connectState = ConnectState.AlreadyConnect,
-                            pairedDevices = setOf(),
-                            title = device.name
-                        )
+                        onReceivedMsg(it, device)
                     },
                     { tr ->
                         viewStates = viewStates.copy(
@@ -184,6 +233,48 @@ class HomeViewModel: ViewModel() {
             )
         }
     }
+
+    @SuppressLint("MissingPermission")
+    private fun onReceivedMsg(bluetoothSocket: BluetoothSocket, device: BluetoothDevice) {
+        socket = bluetoothSocket
+
+        viewModelScope.launch {
+            if (socket != null) {
+                BtHelper.instance.startBtReceiveServer(socket!!, onReceive = { numBytes, byteBufferArray ->
+                    if (numBytes > 0) {
+                        val contentArray = byteBufferArray.sliceArray(0..numBytes)
+                        val contentText = contentArray.toText()
+
+                        Log.i(TAG, "connectDevice: rev：numBytes=$numBytes, " +
+                                "\nbyteBuffer(hex)=${contentArray.toHexStr()}, " +
+                                "\nbyteBuffer(ascii)=$contentText"
+                        )
+
+                        viewStates = viewStates.copy(logText = "${viewStates.logText}\n$contentText")
+
+                        if (contentText.length > 6 && contentText.slice(0..2) == "Set") {
+                            Log.i(TAG, "connectDevice: READ from setting")
+                            val setList = contentText.split(",")
+                            viewStates = viewStates.copy(
+                                availableInduction = setList[1] != "0",
+                                triggerUnlock = setList[2] != "0",
+                                scanningTime = setList[3],
+                                rssiThreshold = setList[4],
+                                shutdownThreshold = setList[5],
+                                isReadSettingState = false
+                            )
+                        }
+                    }
+                })
+            }
+        }
+
+        viewStates = viewStates.copy(
+            connectState = ConnectState.AlreadyConnect,
+            pairedDevices = setOf(),
+            title = device.name
+        )
+    }
 }
 
 data class HomeStates(
@@ -192,17 +283,31 @@ data class HomeStates(
     val pairedDevices: Set<BluetoothDevice> = setOf(),
     val connectDevice: BluetoothDevice? = null,
     val title: String = "Auto controller",
-    val logText: String = ""
+    val logText: String = "",
+    val isShowSettingView: Boolean = false,
+    val isReadSettingState: Boolean = true,
+    val availableInduction: Boolean = true,
+    val triggerUnlock: Boolean = true,
+    val scanningTime: String = "5",
+    val rssiThreshold: String = "100",
+    val shutdownThreshold: String = "1"
 )
 
 sealed class HomeAction {
     object ClickPowerOn: HomeAction()
     object ClickPowerOff: HomeAction()
-    object ClickReadState: HomeAction()
+    object ClickSaveSetting: HomeAction()
+    data class ClickReadState(val readSettingOnly: Boolean = false): HomeAction()
     data class ClickBack(val activity: Activity?): HomeAction()
     data class InitBt(val context: Context): HomeAction()
     data class ConnectDevice(val device: BluetoothDevice) : HomeAction()
     data class OnClickButton(val index: ButtonIndex, val action: ButtonAction) : HomeAction()
+    data class ToggleSettingView(val isShow: Boolean): HomeAction()
+    data class OnAvailableInductionChange(val value: Boolean): HomeAction()
+    data class OnTriggerUnlockChange(val value: Boolean): HomeAction()
+    data class OnScanningTimeChange(val value: String): HomeAction()
+    data class OnRssiThresholdChange(val value: String): HomeAction()
+    data class OnShutdownThresholdChange(val value: String): HomeAction()
 }
 
 enum class ConnectState {

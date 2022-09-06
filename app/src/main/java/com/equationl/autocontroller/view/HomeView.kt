@@ -5,6 +5,7 @@ import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -93,7 +94,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
 
             Button(
                 onClick = {
-                    viewModel.dispatch(HomeAction.ClickReadState
+                    viewModel.dispatch(HomeAction.ClickReadState()
                     )
                 },
                 modifier = Modifier.padding(end = 4.dp)
@@ -101,9 +102,18 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 Text(text = "状态")
             }
 
-            Button(onClick = { /*TODO*/ }) {
+            Button(
+                onClick = {
+                    viewModel.dispatch(HomeAction.ToggleSettingView(!viewModel.viewStates.isShowSettingView))
+                }
+            ) {
                 Text(text = "设置")
             }
+        }
+
+        AnimatedVisibility(visible = viewModel.viewStates.isShowSettingView) {
+            SettingView(viewModel = viewModel)
+
         }
 
         Column(
